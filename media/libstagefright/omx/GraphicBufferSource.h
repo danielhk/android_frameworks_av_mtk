@@ -61,7 +61,11 @@ public:
 
     virtual ~GraphicBufferSource();
 
-    status_t init();
+    // We can't throw an exception if the constructor fails, so we just set
+    // this and require that the caller test the value.
+    status_t initCheck() const {
+        return mInitCheck;
+    }
 
     // Returns the handle to the producer side of the BufferQueue.  Buffers
     // queued on this will be received by GraphicBufferSource.

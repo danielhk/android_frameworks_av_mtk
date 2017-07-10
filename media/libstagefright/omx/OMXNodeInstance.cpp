@@ -1052,7 +1052,7 @@ status_t OMXNodeInstance::createGraphicBufferSource(
             usageBits,
             bufferConsumer);
 
-    if ((err = bufferSource->init()) != OK) {
+    if ((err = bufferSource->initCheck()) != OK) {
         return err;
     }
     setGraphicBufferSource(bufferSource);
