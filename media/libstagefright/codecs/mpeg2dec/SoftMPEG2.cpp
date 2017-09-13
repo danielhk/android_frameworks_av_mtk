@@ -80,19 +80,22 @@ SoftMPEG2::SoftMPEG2(
     // If input dump is enabled, then open create an empty file
     GENERATE_FILE_NAMES();
     CREATE_DUMP_FILE(mInFile);
-
-    CHECK_EQ(initDecoder(), (status_t)OK);
 }
 
 SoftMPEG2::~SoftMPEG2() {
-    CHECK_EQ(deInitDecoder(), (status_t)OK);
+    if (OK != deInitDecoder()) {
+        ALOGE("Failed to deinit decoder");
+        notify(OMX_EventError, OMX_ErrorUnsupportedSetting, 0, NULL);
+        mSignalledError = true;
+        return;
+    }
 }
 
 
-static size_t getMinTimestampIdx(OMX_S64 *pNTimeStamp, bool *pIsTimeStampValid) {
+static ssize_t getMinTimestampIdx(OMX_S64 *pNTimeStamp, bool *pIsTimeStampValid) {
     OMX_S64 minTimeStamp = LLONG_MAX;
-    int idx = -1;
-    for (size_t i = 0; i < MAX_TIME_STAMPS; i++) {
+    ssize_t idx = -1;
+    for (ssize_t i = 0; i < MAX_TIME_STAMPS; i++) {
         if (pIsTimeStampValid[i]) {
             if (pNTimeStamp[i] < minTimeStamp) {
                 minTimeStamp = pNTimeStamp[i];
@@ -201,6 +204,9 @@ status_t SoftMPEG2::resetDecoder() {
 
     /* Set number of cores/threads to be used by the codec */
     setNumCores();
+
+    mStride = 0;
+    mSignalledError = false;
 
     return OK;
 }
@@ -384,7 +390,8 @@ status_t SoftMPEG2::initDecoder() {
     resetPlugin();
 
     /* Set the run time (dynamic) parameters */
-    setParams(displayStride);
+    mStride = outputBufferWidth();
+    setParams(mStride);
 
     /* Set number of cores/threads to be used by the codec */
     setNumCores();
@@ -429,6 +436,7 @@ status_t SoftMPEG2::deInitDecoder() {
 
     mInitNeeded = true;
     mChangingResolution = false;
+    mCodecCtx = NULL;
 
     return OK;
 }
@@ -440,10 +448,11 @@ status_t SoftMPEG2::reInitDecoder() {
 
     ret = initDecoder();
     if (OK != ret) {
-        ALOGE("Create failure");
+        ALOGE("Failed to initialize decoder");
         deInitDecoder();
-        return NO_MEMORY;
+        return ret;
     }
+    mSignalledError = false;
     return OK;
 }
 
@@ -541,12 +550,30 @@ void SoftMPEG2::onPortFlushCompleted(OMX_U32 portIndex) {
 void SoftMPEG2::onQueueFilled(OMX_U32 portIndex) {
     UNUSED(portIndex);
 
+    if (mSignalledError) {
+        return;
+    }
     if (mOutputPortSettingsChange != NONE) {
         return;
     }
 
+    if (NULL == mCodecCtx) {
+        if (OK != initDecoder()) {
+            ALOGE("Failed to initialize decoder");
+            notify(OMX_EventError, OMX_ErrorUnsupportedSetting, 0, NULL);
+            mSignalledError = true;
+            return;
+        }
+    }
+
     List<BufferInfo *> &inQueue = getPortQueue(kInputPortIndex);
     List<BufferInfo *> &outQueue = getPortQueue(kOutputPortIndex);
+
+    if (outputBufferWidth() != mStride) {
+        /* Set the run-time (dynamic) parameters */
+        mStride = outputBufferWidth();
+        setParams(mStride);
+    }
 
     /* If input EOS is seen and decoder is not in flush mode,
      * set the decoder in flush mode.
@@ -601,7 +628,9 @@ void SoftMPEG2::onQueueFilled(OMX_U32 portIndex) {
             bool portWillReset = false;
             handlePortSettingsChange(&portWillReset, mNewWidth, mNewHeight);
 
-            CHECK_EQ(reInitDecoder(), (status_t)OK);
+            if (OK != reInitDecoder()) {
+                ALOGE("Failed to reinitialize decoder");
+            }
             return;
         }
 
@@ -672,7 +701,10 @@ void SoftMPEG2::onQueueFilled(OMX_U32 portIndex) {
                 bool portWillReset = false;
                 handlePortSettingsChange(&portWillReset, s_dec_op.u4_pic_wd, s_dec_op.u4_pic_ht);
 
-                CHECK_EQ(reInitDecoder(), (status_t)OK);
+                if (OK != reInitDecoder()) {
+                    ALOGE("Failed to reinitialize decoder");
+                    return;
+                }
 
                 if (setDecodeArgs(&s_dec_ip, &s_dec_op, inHeader, outHeader, timeStampIx)) {
                     ivdec_api_function(mCodecCtx, (void *)&s_dec_ip, (void *)&s_dec_op);
@@ -686,6 +718,8 @@ void SoftMPEG2::onQueueFilled(OMX_U32 portIndex) {
                 mChangingResolution = false;
                 resetDecoder();
                 resetPlugin();
+                mStride = outputBufferWidth();
+                setParams(mStride);
                 continue;
             }
 
@@ -716,10 +750,15 @@ void SoftMPEG2::onQueueFilled(OMX_U32 portIndex) {
             }
 
             if (s_dec_op.u4_output_present) {
-                size_t timeStampIdx;
+                ssize_t timeStampIdx;
                 outHeader->nFilledLen = (mWidth * mHeight * 3) / 2;
 
                 timeStampIdx = getMinTimestampIdx(mTimeStamps, mTimeStampsValid);
+                if (timeStampIdx < 0) {
+                    ALOGE("b/62872863, Invalid timestamp index!");
+                    android_errorWriteLog(0x534e4554, "62872863");
+                    return;
+                }
                 outHeader->nTimeStamp = mTimeStamps[timeStampIdx];
                 mTimeStampsValid[timeStampIdx] = false;
 
