@@ -226,6 +226,8 @@ OMXNodeInstance::OMXNodeInstance(
     mMetadataType[1] = kMetadataBufferTypeInvalid;
     mSecureBufferType[0] = kSecureBufferTypeUnknown;
     mSecureBufferType[1] = kSecureBufferTypeUnknown;
+    mGraphicBufferEnabled[0] = false;
+    mGraphicBufferEnabled[1] = false;
     mIsSecure = AString(name).endsWith(".secure");
 }
 
@@ -562,6 +564,12 @@ status_t OMXNodeInstance::enableNativeBuffers(
             } else if (mSecureBufferType[portIndex] == kSecureBufferTypeUnknown) {
                 mSecureBufferType[portIndex] = kSecureBufferTypeOpaque;
             }
+        } else {
+            if (err == OMX_ErrorNone) {
+                mGraphicBufferEnabled[portIndex] = enable;
+            } else if (enable) {
+                mGraphicBufferEnabled[portIndex] = false;
+            }
         }
     } else {
         CLOG_ERROR_IF(enable, getExtensionIndex, err, "%s", name);
@@ -798,6 +806,13 @@ status_t OMXNodeInstance::useBuffer(
         return BAD_VALUE;
     }
 
+    if (mMetadataType[portIndex] == kMetadataBufferTypeInvalid
+            && mGraphicBufferEnabled[portIndex]) {
+        ALOGE("b/62948670");
+        android_errorWriteLog(0x534e4554, "62948670");
+        return INVALID_OPERATION;
+    }
+
     // metadata buffers are not connected cross process
     // use a backup buffer instead of the actual buffer
     BufferMeta *buffer_meta;
@@ -916,6 +931,13 @@ status_t OMXNodeInstance::useGraphicBuffer(
         return BAD_VALUE;
     }
     Mutex::Autolock autoLock(mLock);
+    if (!mGraphicBufferEnabled[portIndex]
+            || mMetadataType[portIndex] != kMetadataBufferTypeInvalid) {
+        // Report error if this is not in graphic buffer mode.
+        ALOGE("b/62948670");
+        android_errorWriteLog(0x534e4554, "62948670");
+        return INVALID_OPERATION;
+    }
 
     // See if the newer version of the extension is present.
     OMX_INDEXTYPE index;
@@ -1235,6 +1257,12 @@ status_t OMXNodeInstance::allocateSecureBuffer(
         return BAD_VALUE;
     }
 
+    if (mSecureBufferType[portIndex] == kSecureBufferTypeUnknown) {
+        ALOGE("b/63522818");
+        android_errorWriteLog(0x534e4554, "63522818");
+        return ERROR_UNSUPPORTED;
+    }
+
     BufferMeta *buffer_meta = new BufferMeta(size, portIndex);
 
     OMX_BUFFERHEADERTYPE *header;
@@ -1294,6 +1322,12 @@ status_t OMXNodeInstance::allocateBufferWithBackup(
         ALOGE("b/35467458");
         android_errorWriteLog(0x534e4554, "35467458");
         return BAD_VALUE;
+    }
+
+    if (mSecureBufferType[portIndex] != kSecureBufferTypeUnknown) {
+        ALOGE("b/63522818");
+        android_errorWriteLog(0x534e4554, "63522818");
+        return ERROR_UNSUPPORTED;
     }
 
     // metadata buffers are not connected cross process; only copy if not meta
