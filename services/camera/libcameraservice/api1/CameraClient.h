@@ -110,6 +110,11 @@ private:
     static void             handleCallbackTimestampBatch(
                                     int32_t msgType, const std::vector<HandleTimestampMessage>&, void* user);
     // handlers for messages
+#ifdef MTK_HARDWARE
+    void                    handleMtkShutter(int32_t ext2);
+    void                    handleMtkGenericData(int32_t msgType, const sp<IMemory>& dataPtr,
+            camera_frame_metadata_t *metadata);
+#endif
     void                    handleShutter(void);
     void                    handlePreviewData(int32_t msgType, const sp<IMemory>& mem,
             camera_frame_metadata_t *metadata);

@@ -32,6 +32,11 @@ constexpr T MIN(const T &a, const T &b) { return a <= b ? a : b; }
 static const size_t kSharedMemoryThreshold = MIN(
         (size_t)MediaBuffer::kSharedMemThreshold, (size_t)(4 * 1024));
 
+#ifdef MTK_HARDWARE
+MediaBufferGroup::MediaBufferGroup() :
+    mGrowthLimit(0) {
+}
+#endif
 MediaBufferGroup::MediaBufferGroup(size_t growthLimit) :
     mGrowthLimit(growthLimit) {
 }
@@ -138,6 +143,11 @@ bool MediaBufferGroup::has_buffers() {
     return false;
 }
 
+#ifdef MTK_HARDWARE
+status_t MediaBufferGroup::acquire_buffer(MediaBuffer **buffer, bool nonBlocking) {
+    return acquire_buffer(buffer, nonBlocking, 0);
+}
+#endif
 status_t MediaBufferGroup::acquire_buffer(
         MediaBuffer **out, bool nonBlocking, size_t requestedSize) {
     Mutex::Autolock autoLock(mLock);
