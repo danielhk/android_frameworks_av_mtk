@@ -17,6 +17,10 @@ LOCAL_SRC_FILES := \
 
 LOCAL_CFLAGS := -Wall -Werror
 
+ifeq ($(BOARD_USES_LEGACY_MTK_AV_BLOB), true)
+    LOCAL_CFLAGS += -DLEGACY_MTK_AV_BLOB
+endif
+
 ifeq ($(USE_LEGACY_LOCAL_AUDIO_HAL), true)
 
 # Use audiohal directly w/o hwbinder middleware.

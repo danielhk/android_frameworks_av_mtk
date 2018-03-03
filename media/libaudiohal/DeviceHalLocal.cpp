@@ -137,8 +137,20 @@ status_t DeviceHalLocal::openInputStream(
             handle, devices, flags,
             config->sample_rate, config->format, config->channel_mask,
             address, source);
+#ifdef LEGACY_MTK_AV_BLOB
+    halStream = (audio_stream_in_t *)calloc(1, sizeof(audio_stream_in_t));
+    int openResult = mDev->open_input_stream(
+            mDev, handle, devices, config, &mIn, flags, address, source);
+    memcpy(halStream, mIn, sizeof(legacy_audio_stream_in_t));
+    halStream->get_capture_position = NULL;
+    halStream->start = NULL;
+    halStream->stop = NULL;
+    halStream->create_mmap_buffer = NULL;
+    halStream->get_mmap_position = NULL;
+#else
     int openResult = mDev->open_input_stream(
             mDev, handle, devices, config, &halStream, flags, address, source);
+#endif
     if (openResult == OK) {
         *inStream = new StreamInHalLocal(halStream, this);
     }
@@ -193,7 +205,12 @@ void DeviceHalLocal::closeOutputStream(struct audio_stream_out *stream_out) {
 }
 
 void DeviceHalLocal::closeInputStream(struct audio_stream_in *stream_in) {
+#ifdef LEGACY_MTK_AV_BLOB
+    mDev->close_input_stream(mDev, mIn);
+    free(stream_in);
+#else
     mDev->close_input_stream(mDev, stream_in);
+#endif
 }
 
 } // namespace android
