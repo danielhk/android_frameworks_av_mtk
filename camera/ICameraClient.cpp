@@ -74,7 +74,7 @@ public:
     // generic data callback from camera service to app with image data
     void dataCallbackTimestamp(nsecs_t timestamp, int32_t msgType, const sp<IMemory>& imageData)
     {
-        ALOGV("dataCallback");
+        ALOGV("dataCallbackTimestamp");
         Parcel data, reply;
         data.writeInterfaceToken(ICameraClient::getInterfaceDescriptor());
         data.writeInt64(timestamp);
