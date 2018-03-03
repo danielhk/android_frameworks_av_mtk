@@ -172,6 +172,7 @@ cc_library_shared {
         "MediaResourcePolicy.cpp",
         "Visualizer.cpp",
         "StringArray.cpp",
+        "mtkaudio_stubs.cpp",
     ],
 
     shared_libs: [
